@@ -788,17 +788,44 @@ table.fios td:last-child{border-radius:0 12px 12px 0}
 (function () {
   var raiz = document.documentElement;
   if (!raiz.classList.contains('js')) return;
+  var PAUSA = 5000; // tempo que o desenho fica pronto antes de se bordar de novo
   var alvos = document.querySelectorAll('[data-anim], .sobe-suave');
+  var timers = new Map();
+  function duracao(el) {
+    var fim = 0;
+    try {
+      el.getAnimations({ subtree: true }).forEach(function (a) {
+        var t = a.effect && a.effect.getComputedTiming().endTime;
+        if (isFinite(t) && t > fim) fim = t;
+      });
+    } catch (err) { fim = 6000; }
+    return fim || 6000;
+  }
+  function agendar(el) {
+    clearTimeout(timers.get(el));
+    timers.set(el, setTimeout(function () {
+      if (el._naTela) tocar(el); else el._parado = true;
+    }, duracao(el) + PAUSA));
+  }
+  function tocar(el) {
+    el._parado = false;
+    el.classList.remove('vis'); void el.getBoundingClientRect(); el.classList.add('vis');
+    agendar(el);
+  }
   var io = new IntersectionObserver(function (es) {
     es.forEach(function (e) {
-      if (e.isIntersecting) { e.target.classList.add('vis'); io.unobserve(e.target); }
+      var el = e.target;
+      if (!el.hasAttribute('data-anim')) {
+        if (e.isIntersecting) { el.classList.add('vis'); io.unobserve(el); }
+        return;
+      }
+      el._naTela = e.isIntersecting;
+      if (e.isIntersecting && (!el.classList.contains('vis') || el._parado)) tocar(el);
     });
   }, { threshold: 0.25 });
   alvos.forEach(function (el) { io.observe(el); });
   document.querySelectorAll('figure.card[data-anim], .legenda[data-anim]').forEach(function (f) {
-    f.addEventListener('click', function () {
-      f.classList.remove('vis'); void f.getBoundingClientRect(); f.classList.add('vis');
-    });
+    f.addEventListener('click', function () { tocar(f); });
   });
   window.addEventListener('beforeprint', function () {
     alvos.forEach(function (el) { el.classList.add('vis'); });
